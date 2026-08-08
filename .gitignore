@@ -1,0 +1,46 @@
+# CMake / MSVC build trees
+**/build/
+out/
+cmake-build-*/
+CMakeCache.txt
+cmake_install.cmake
+CMakeUserPresets.json
+compile_commands.json
+
+# Compiled plugin binaries & intermediates (keep SDK libs under plugins/sdk)
+*.dll
+*.exe
+*.exp
+*.pdb
+*.ilk
+*.obj
+*.o
+*.a
+*.so
+*.dylib
+*.iobj
+*.ipdb
+*.idb
+*.recipe
+*.tlog
+*.log
+
+# Visual Studio / IDE
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.db.dsk
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+ipch/
+*.aps
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,23 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "win32-release",
+            "displayName": "Windows x86 Release",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "Win32",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ASHITA4_SDK_PATH": "${sourceDir}/../sdk"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "win32-release",
+            "configurePreset": "win32-release",
+            "configuration": "Release"
+        }
+    ]
+}
