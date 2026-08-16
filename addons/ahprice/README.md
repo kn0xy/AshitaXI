@@ -4,7 +4,7 @@ AHPrice lets you type an auction house listing price with the number keys instea
 
 ## Installation
 
-[Download](https://github.com/kn0xy/AshitaXI/releases/download/ahprice/ahprice-1.0.zip) and extract to your `Ashitav4-beta/addons` folder.
+[Download](https://github.com/kn0xy/AshitaXI/releases/download/ahprice/ahprice-1.1.zip) and extract to your `Ashitav4-beta/addons` folder.
 
 ## Usage
 

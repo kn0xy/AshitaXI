@@ -21,7 +21,7 @@
 
 addon.name      = 'ahprice';
 addon.author    = 'kn0xy';
-addon.version   = '1.0';
+addon.version   = '1.1';
 addon.desc      = 'Allows typing the price of an item in the auction house.';
 addon.link      = 'https://www.knoxy.tk';
 
@@ -31,10 +31,12 @@ local ffi = require 'ffi';
 
 local ffxi = ashita.memory.get_base('FFXiMain.dll') or 0;
 local ahprice = T{
-    active  = false,
-    session = false,
-    buffer  = '',
-    menus   = ''
+    active     = false,
+    session    = false,
+    buffer     = '',
+    menus      = '',
+    bind_block = false,
+    binds      = T{ },
 };
 
 local PRICE_OFFSET = 0x28;
@@ -52,6 +54,164 @@ local CAPTURE_KEYS = T{
     0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
     KEY_BACK, KEY_DELETE
 };
+
+
+local function parse_bind_combo(combo)
+    if (combo == nil or combo == '') then
+        return nil;
+    end
+
+    local mods, key = combo:match('^([!%^@#+%$]*)(.+)$');
+    if (key == nil or key == '') then
+        return nil;
+    end
+
+    local dik = 0;
+    local kb = AshitaCore:GetInputManager():GetKeyboard();
+    if (kb ~= nil) then
+        local ok, value = pcall(function ()
+            return kb:S2D(key);
+        end);
+        if (ok and value ~= nil) then
+            dik = value;
+        end
+    end
+
+    return T{
+        combo        = combo,
+        key          = key,
+        dik          = dik,
+        down         = true,
+        alt          = mods:find('!', 1, true) ~= nil,
+        apps         = mods:find('#', 1, true) ~= nil,
+        ctrl         = mods:find('^', 1, true) ~= nil,
+        shift        = mods:find('+', 1, true) ~= nil,
+        win          = mods:find('@', 1, true) ~= nil,
+        input_closed = false,
+        input_open   = mods:find('$', 1, true) ~= nil,
+        command      = '',
+    };
+end
+
+
+local function bind_matches(a, b)
+    return a.dik == b.dik
+        and a.down == b.down
+        and a.alt == b.alt
+        and a.apps == b.apps
+        and a.ctrl == b.ctrl
+        and a.shift == b.shift
+        and a.win == b.win
+        and a.input_closed == b.input_closed
+        and a.input_open == b.input_open;
+end
+
+
+local function upsert_bind(bind)
+    local idx = ahprice.binds:find_if(function (v)
+        return bind_matches(v, bind);
+    end);
+
+    if (idx ~= nil) then
+        ahprice.binds[idx] = bind;
+        return;
+    end
+
+    ahprice.binds:append(bind);
+end
+
+
+local function remove_bind(bind)
+    local idx = ahprice.binds:find_if(function (v)
+        return bind_matches(v, bind);
+    end);
+
+    if (idx ~= nil) then
+        ahprice.binds:remove(idx);
+    end
+end
+
+
+local function parse_bind_args(args)
+    if (#args < 3) then
+        return nil;
+    end
+
+    local bind = parse_bind_combo(args[2]);
+    if (bind == nil) then
+        return nil;
+    end
+
+    local cmd_idx = 3;
+    if (args[3]:any('down', 'up')) then
+        bind.down = args[3]:ieq('down');
+        cmd_idx = 4;
+    end
+
+    if (#args < cmd_idx) then
+        return nil;
+    end
+
+    bind.command = args:concat(' ', cmd_idx);
+    return bind;
+end
+
+
+local function load_default_binds()
+    local path = ('%s\\scripts\\default.txt'):fmt(AshitaCore:GetInstallPath());
+    local f = io.open(path, 'r');
+    if (f == nil) then
+        return;
+    end
+
+    for line in f:lines() do
+        line = line:trim();
+        if (line ~= '' and line:sub(1, 1) ~= '#') then
+            local args = line:args();
+            if (#args >= 3 and args[1]:ieq('/bind') and (not args[2]:any('list', 'block', 'silent'))) then
+                local bind = parse_bind_args(args);
+                if (bind ~= nil) then
+                    upsert_bind(bind);
+                end
+            end
+        end
+    end
+
+    f:close();
+end
+
+
+local function bind_can_fire_without_chat(bind)
+    return bind.dik ~= nil and bind.dik ~= 0 and (not bind.input_open);
+end
+
+
+local function apply_binds(enabled)
+    local kb = AshitaCore:GetInputManager():GetKeyboard();
+    if (kb == nil) then
+        return;
+    end
+
+    local silent = kb:GetSilentBinds();
+    kb:SetSilentBinds(true);
+
+    ahprice.binds:each(function (bind)
+        if (not bind_can_fire_without_chat(bind)) then
+            return;
+        end
+
+        if (enabled) then
+            kb:Bind(bind.dik, bind.down, bind.alt, bind.apps, bind.ctrl, bind.shift, bind.win, bind.input_closed, bind.input_open, bind.command);
+        else
+            kb:Unbind(bind.dik, bind.down, bind.alt, bind.apps, bind.ctrl, bind.shift, bind.win, bind.input_closed, bind.input_open);
+        end
+    end);
+
+    kb:SetSilentBinds(silent);
+end
+
+
+load_default_binds();
 
 
 local function read_u32(addr)
@@ -192,8 +352,17 @@ local function is_chat_open()
 end
 
 
-local function should_capture()
-    return (not is_chat_open()) and is_ah_open();
+local function set_bind_block(enabled)
+    if (enabled) then
+        apply_binds(false);
+        ahprice.bind_block = true;
+        return;
+    end
+
+    if (ahprice.bind_block) then
+        apply_binds(true);
+        ahprice.bind_block = false;
+    end
 end
 
 
@@ -209,7 +378,10 @@ end
 
 
 local function sync_capture_state()
-    local active = should_capture();
+    local ah_open = is_ah_open();
+    local active = (not is_chat_open()) and ah_open;
+    set_bind_block(active);
+
     if (active ~= ahprice.active) then
         ahprice.active = active;
         ahprice.buffer = '';
@@ -260,7 +432,51 @@ ashita.events.register('packet_in', 'packet_in_cb', function (e)
         ahprice.active = false;
         ahprice.buffer = '';
         ahprice.menus = '';
+        set_bind_block(false);
     end
+end);
+
+
+ashita.events.register('command', 'command_cb', function (e)
+    local args = e.command:args();
+    if (#args == 0) then
+        return;
+    end
+
+    if (args[1]:ieq('/bind') and #args >= 3 and (not args[2]:any('list', 'block', 'silent'))) then
+        local bind = parse_bind_args(args);
+        if (bind ~= nil) then
+            upsert_bind(bind);
+        end
+        return;
+    end
+
+    if (not args[1]:ieq('/unbind')) then
+        return;
+    end
+
+    if (#args >= 2 and args[2]:ieq('all')) then
+        ahprice.binds = T{ };
+        return;
+    end
+
+    if (#args >= 2) then
+        local bind = parse_bind_combo(args[2]);
+        if (bind == nil) then
+            return;
+        end
+
+        if (#args >= 3 and args[3]:any('down', 'up')) then
+            bind.down = args[3]:ieq('down');
+        end
+
+        remove_bind(bind);
+    end
+end);
+
+
+ashita.events.register('unload', 'unload_cb', function ()
+    set_bind_block(false);
 end);
 
 
